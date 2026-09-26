@@ -16,7 +16,7 @@
 * **Valor:** La transformación de datos crudos con inconsistencias en tablas consolidadas y limpias para detección de fraudes, reportes de negocio y toma de decisiones estratégicas sobre los canales de pago.
  
 ### Observaciones y Diagnóstico
-
+###Respuestas
 1. **Reconocimiento de `amount` como String:**
    Spark lee `amount` como `string` debido a que el archivo CSV contiene valores no numéricos (como el texto `"N/A"`). Al no tener un esquema definido explícitamente, asigna `string` para evitar la pérdida de datos.
 
