@@ -225,10 +225,42 @@ Prevención de errores de ejecución (Short-circuit Evaluation): Colocar validac
 
 Explicá cómo se construye _record_key y cómo se usa junto con row_number. ¿Qué caso cubre el hash cuando transaction_id no puede convertirse a un número?
 
+Construcción de _record_key: Se calcula utilizando la función hash() sobre la combinación de tres columnas: transaction_id, customer_id y transaction_timestamp.
+
+Uso junto con row_number: Se define una ventana dividida por _record_key y ordenada de forma descendente por transaction_timestamp. Al aplicar row_number().over(...), se numera cada registro dentro de su grupo de duplicados y se filtra manteniendo únicamente la fila donde row_number == 1. Esto asegura la deduplicación del conjunto de datos reteniendo el registro más reciente.
+
+Caso de transaction_id no convertible a número: El uso de hash() genera una huella o firma determinística única independientemente del tipo de dato de entrada. Esto permite identificar y agrupar duplicados de manera consistente incluso si transaction_id contiene caracteres alfanuméricos, valores nulos o formatos inválidos que no puedan transformarse directamente en un tipo numérico.
+
 Interpretá las dos cláusulas principales del MERGE de silver_transactions. ¿Cuándo se actualiza una fila existente y cuándo se inserta una nueva?
+
+WHEN MATCHED THEN UPDATE SET ... (Actualizar): Si la transacción ya existe en la tabla destino, solo le actualizás sus datos con la información nueva (para no duplicarla y tenerla al día).
+
+WHEN NOT MATCHED THEN INSERT * (Insertar): Si la transacción es totalmente nueva y no existía en la tabla, la agregás como un registro nuevo.
 
 ¿Por qué las tablas Gold se reconstruyen completamente en esta práctica mientras Silver se actualiza con MERGE? Mencioná una ventaja y una limitación de cada estrategia.
 
+Es porque Silver maneja datos crudos a nivel de detalle y le conviene usar MERGE para actualizar de forma eficiente solo los registros nuevos o modificados sin procesar todo desde cero. En cambio, Gold agrupa y calcula métricas finales (como reportes o tableros), por lo que suele ser más simple y seguro borrarla y reconstruirla por completo para garantizar que los agregados reflejen el 100% de los datos actualizados.
+
+Actualización con MERGE (Silver)
+Ventaja: Eficiencia y rapidez. Procesa únicamente los cambios y nuevos registros, ahorrando tiempo de cómputo y costos.
+Limitación: Mayor complejidad. Requiere definir claves primarias claras y manejar lógica para controlar duplicados o inconsistencias.
+
+Reconstrucción Completa / Full Overwrite (Gold)
+Ventaja: Simplicidad y consistencia. Al recalcular toda la tabla, nos aseguramos de que no queden datos viejos desfasados o métricas mal calculadas.
+Limitación: Costo y lentitud. Volver a procesar todo el histórico cada vez se vuelve más pesado y caro a medida que la tabla crece.
+
 ¿Por qué expected_batch_id no participa en la detección del archivo nuevo? Indicá qué parte del pipeline descubre batch_003 y qué parte utiliza el parámetro.
 
+expected_batch_id no participa en la detección porque no es un filtro de búsqueda, sino una validación de control. El pipeline busca archivos en la carpeta basándose en su patrón de nombre o fecha, no esperando a que aparezca un ID en específico.
+
+Parte que descubre batch_003: El proceso de ingesta o lectura del almacenamiento (como Auto Loader / Structured Streaming o un dbutils.fs.ls). Esta parte escanea el directorio de origen, ve que apareció el archivo físico batch_003.csv (o parquet) y lo levanta para procesar.
+
+Parte que usa el parámetro: La lógica de control/validación del pipeline. Toma ese batch_003 que la ingesta acaba de descubrir y lo compara contra expected_batch_id para verificar que los lotes se estén procesando en el orden correcto y no nos saltemos ningún paso.
+
 Si la tarea build_silver falla, ¿qué ocurre con build_gold y validate en el Job? Explicá cómo las dependencias del DAG evitan publicar o validar resultados incompletos.
+
+build_gold y validate no se ejecutan: Quedan automáticamente canceladas (en estado Skipped o Upstream Failed).
+
+¿Cómo lo evita el DAG?
+Regla de dependencia: El DAG exige que cada paso termine con éxito antes de pasar al siguiente.
+Cierre del grifo: Si falla Silver, el DAG "cierra el paso" para que Gold no procese datos a medias y para que validate no dé por aceptado un lote incompleto.
